@@ -3,6 +3,7 @@ import networkx as nx  # tool to handle general Graphs
 import matplotlib.pyplot as plt 
 from matplotlib import cm
 from matplotlib.ticker import LinearLocator, FormatStrFormatter
+import itertools
 
 from qiskit import Aer, IBMQ
 from qiskit import QuantumRegister, ClassicalRegister, QuantumCircuit, transpile, assemble
@@ -12,20 +13,10 @@ from qiskit.visualization import plot_histogram
 
 classical_backend = Aer.get_backend('qasm_simulator')
 
-# # Authenticate an account and add for use during this session. Replace string argument with your private token.
+def sample_function():
 
-# IBMQ.enable_account('your ibm token here')
+    # Need to use your ibm account for quantum backend
 
-# # To store your credentials locally you can run:
-
-# IBMQ.save_account("your ibm token here",overwrite=True)
-
-# my_provider = IBMQ.get_provider()
-
-# quantum_backend = my_provider.get_backend('ibmq_qasm_simulator')
-
-
-def main():
     # A test example, to be replaced by analysis we want to perform
     # nx module for u3r graph generation
     G = nx.random_regular_graph(3, 6, seed = 2)
@@ -36,31 +27,17 @@ def main():
     result = full_abQAOA(abQAOAfunc, G, p=5, R = 10)
     print(f'full abQAOA result: {result}')
         
-    QAOAfunc = generate_QAOA_cost_from_para(G, classical_backend, nshots = 4)
-    QAOAres = full_QAOA(QAOAfunc, G, p=5, R = 10)
-    print(f'full QAOA result: {QAOAres}')
+    
+    # A simple test 
 
+    # abQAOAfunc = generate_abQAOA_cost_from_para(G, quantum_backend, nshots = 64)
+    # abQAOAres = full_abQAOA(abQAOAfunc, G, p = 1, R = 10)
+    # print(f'full abQAOA result: {abQAOAres}')
+        
+    # QAOAfunc = generate_QAOA_cost_from_para(G, quantum_backend, nshots = 4)
+    # QAOAres = full_QAOA(QAOAfunc, G, p=2, R = 10)
+    # print(f'full QAOA result: {QAOAres}')
 
-
-# # Alternative way to generate graph
-# n = 6
-# V = np.arange(0,n,1)
-# E =[(0,1,1.0),(0,2,1.0),(0,5,1.0), (1,2,1.0),(1,4,1.0), (2,3,1.0),(3,4,1.0),(3,5,1.0),(4,5,1.0),(5,0,1.0)] 
-
-# G = nx.Graph()
-# G.add_nodes_from(V)
-# G.add_weighted_edges_from(E)
-
-# # Generate plot of the Graph
-# colors       = ['r' for node in G.nodes()]
-# default_axes = plt.axes(frameon=True)
-# pos          = nx.circular_layout(G)
-
-# nx.draw_networkx(G, node_color=colors, node_size=600, alpha=1, ax=default_axes, pos=pos)
-# # plt.savefig('network.jpg')
-
-
-# ## generate circuit
 
 def fourier(uv):
     
@@ -289,7 +266,7 @@ def Cloning(li1):
 
 # func = generate_cost_from_para(G, para, backend)
 
-def Adam_abQAOA(func, initial_para, G, p, alpha=0.001, beta1=0.9, beta2=0.999, epsilon = 1e-8):
+def Adam_abQAOA(func, initial_para, G, p, alpha=0.001, beta1=0.9, beta2=0.999, epsilon = 1e-8, accuracy = 1e-4, n_max = 500):
     """
     Adam optimization algprithm especially written for ab-QAOA
     
@@ -314,6 +291,7 @@ def Adam_abQAOA(func, initial_para, G, p, alpha=0.001, beta1=0.9, beta2=0.999, e
     h = initial_para[2*p:] 
 #     print(len(h))
     nqubits = len(G.nodes())
+    # We do not need to know the energy. We set it to a value that will not converge
     E_prev = -nqubits
     para = Cloning(initial_para)
     # theta = [beta, gamma] = para[0:2*p - 1]
@@ -328,7 +306,7 @@ def Adam_abQAOA(func, initial_para, G, p, alpha=0.001, beta1=0.9, beta2=0.999, e
 
 #         print(E)
         # Set max n of ite to 500 here
-        if (abs(E - E_prev) < 1e-6 or t == 500):
+        if (abs(E - E_prev) < accuracy or t == n_max):
             break
         g = res['grad']
         m = beta1 * m_prev + (1 - beta1) * g
@@ -379,7 +357,11 @@ def generate_abQAOA_cost_from_para(G, backend, nshots = 1):
     """
     def execute_circ(para):
         qc = create_abQAOA_circ(G, para)
-        counts = backend.run(qc, shots = nshots).result().get_counts()
+        if nshots == -1:
+            # counts = backend.run(qc.remove_final_measurements(inplace=False)).result().get_counts()
+            counts = backend.run(qc.remove_final_measurements(inplace=False)).result().get_counts()
+        else:
+            counts = backend.run(qc, shots = nshots).result().get_counts()
         result = {}
         result['counts'] = counts
         result['E'] = cost_expectation(counts, G)
@@ -405,7 +387,10 @@ def generate_QAOA_cost_from_para(G, backend, nshots = 1):
     """
     def execute_circ(para):
         qc = create_qaoa_circ(G, para)
-        counts = backend.run(qc, shots = nshots).result().get_counts()
+        if nshots == -1:
+            counts = backend.run(qc.remove_final_measurements(inplace=False)).result().get_counts()
+        else:
+            counts = backend.run(qc, shots = nshots).result().get_counts()
         result = {}
         result['counts'] = counts
         result['E'] = cost_expectation(counts, G)
@@ -476,7 +461,7 @@ def initialize_h(nqubits, method = 'PosNegOnes'):
         print('Please use a valid method')
         return
     
-
+# It seems that R = 1 and R =2 will result in an error
 def full_abQAOA(func, G, p, R = 10):
     """
     Run full abQAOA on graph G
@@ -702,5 +687,53 @@ def full_QAOA(func, G, p, R = 10):
     result['cost'] = best_costs
     return result
 
-main()
+# sample_function()
 
+def convertTuple(tup):
+        # initialize an empty string
+    str = ''
+    for item in tup:
+        str = str + item
+    return str
+    
+def MaxCutSolver(G):
+    """
+    Using u and v to compute beta and gamma
+    Args:  
+        G: the graph                
+    Returns:
+        result: dict with keys
+            'states': strings of 1 and 0, possibly degenerate
+            'cost': the best cost
+    """
+
+    opt_cost = -1
+    states = []
+    n_qubits = len(G.nodes())
+
+    all_x = list(itertools.product('01', repeat=n_qubits))
+
+    for x in all_x:
+        # cost_function_C gives positive values
+        x = convertTuple(x)
+        cost = cost_function_C(x,G, weight = False)
+        if cost >= opt_cost:
+            opt_cost = cost
+    for x in all_x:
+        # cost_function_C gives positive values
+        # x = convertTuple(x)
+        cost = cost_function_C(x,G, weight = False)
+        if cost == opt_cost:
+            states.append(x)
+
+    result = {}
+    result['states'] = states
+    # reverse the sign to make it consistent with other parts of program
+    result['cost'] = -opt_cost
+
+    return result
+
+
+# Run a code script defined at beginning
+
+# sample_function()
