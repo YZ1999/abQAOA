@@ -503,7 +503,7 @@ def full_abQAOA(func, G, p, R = 10):
         result = Adam_abQAOA(func, para, G, p=1)
         print('Adam Result:')
         print(result)
-        if result['cost'] < best_cost:
+        if result['cost'] <= best_cost:
             best_cost = result['cost'] 
             best_para = result['para']
             best_result = result
@@ -553,7 +553,7 @@ def full_abQAOA(func, G, p, R = 10):
             print('Adam result')
             print(result)
             
-            if result['cost'] < best_cost:
+            if result['cost'] <= best_cost:
                 best_cost = result['cost'] 
                 best_para = result['para']
                 best_result = result
@@ -617,7 +617,7 @@ def full_QAOA(func, G, p, R = 10):
         result = Adam_abQAOA(func, para, G, p=1)
         print('Adam Result:')
         print(result)
-        if result['cost'] < best_cost:
+        if result['cost'] <= best_cost:
             best_cost = result['cost'] 
             best_para = result['para']
             best_result = result
@@ -667,7 +667,7 @@ def full_QAOA(func, G, p, R = 10):
             print('Adam result')
             print(result)
             
-            if result['cost'] < best_cost:
+            if result['cost'] <= best_cost:
                 best_cost = result['cost'] 
                 best_para = result['para']
                 best_result = result
