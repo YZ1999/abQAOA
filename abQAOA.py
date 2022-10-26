@@ -1,3 +1,4 @@
+# This code is editted to try to reproduce previous results
 import numpy as np
 import networkx as nx  # tool to handle general Graphs 
 import matplotlib.pyplot as plt 
@@ -10,6 +11,8 @@ from qiskit import QuantumRegister, ClassicalRegister, QuantumCircuit, transpile
 from qiskit.providers.ibmq import least_busy
 from qiskit.tools.monitor import job_monitor
 from qiskit.visualization import plot_histogram
+
+from scipy.optimize import minimize
 
 classical_backend = Aer.get_backend('qasm_simulator')
 
@@ -72,7 +75,24 @@ def get_Euler_angles(beta, h):
       
     return angles
 
+def mixing_layer(nqubits,h,beta):
+    qc = QuantumCircuit(nqubits)
 
+    for i in range(nqubits):
+        qc.ry(-h[i],i)
+    for i in range(nqubits):
+        qc.rx(2*beta,i)
+    for i in range(nqubits):
+        qc.ry(h[i],i)
+        
+    return qc
+
+def cost_layer(nqubits, G, gamma):
+    qc=QuantumCircuit(nqubits)
+    for edge in list(G.edges()):
+        qc.rzz(gamma*edge[2], edge[0], edge[1])
+    #qc.barrier()
+    return qc
 
 
 def create_abQAOA_circ(G, para):
@@ -99,6 +119,10 @@ def create_abQAOA_circ(G, para):
     beta = theta[:p]
     gamma = theta[p:]
     h = para[-nqubits:]
+    h = np.array(h)
+    h = h * np.pi / 4
+    # for bf in h:
+    #     bf = bf * np.pi / 4.
     
     
     
@@ -106,21 +130,20 @@ def create_abQAOA_circ(G, para):
     # C [| 0 > + ( h - \sqrt{1+h^2} ) |1 > ] 
     # Where c is normalization constant
     for i in range(0, nqubits):
-        initial_vector = np.array([1, h[i] - (1 + h[i]**2)**0.5])
-        initial_vector /= np.linalg.norm(initial_vector)
-        qc.initialize(initial_vector, i)
+        qc.ry(h[i]-np.pi/2, nqubits -1 -i)
     qc.barrier()
     # Quantum gates
     for irep in range(0, p):        
         # problem unitary
         for pair in list(G.edges()):
-            qc.rzz(2 * gamma[irep], pair[0], pair[1])
+            # weight * gamma[irep]
+            qc.rzz(gamma[irep], nqubits - 1 - pair[0], nqubits -1 - pair[1])
         qc.barrier()
         # mixer unitary = exp [ib (X - hZ) ]
-        # Todo
-        for i in range(0, nqubits):
-            angles = get_Euler_angles(beta[irep], h[i])
-            qc.u(angles[0], angles[1], angles[2], i)
+        for i in range(0, nqubits):               
+            qc.ry(-h[i],nqubits - 1 -i)
+            qc.rx(2*beta[irep], nqubits - 1 - i)
+            qc.ry(h[i],nqubits - 1 - i)
             
     qc.measure_all()
         
@@ -152,18 +175,20 @@ def create_qaoa_circ(G, para):
     gamma = theta[p:]
     
     # initial_state
+    # for i in range(0, nqubits):
+    #     qc.h(nqubits-1-i)
     for i in range(0, nqubits):
-        qc.h(i)
+        qc.ry(-np.pi/2, nqubits -1 -i)
     
     for irep in range(0, p):
         
         # problem unitary
         for pair in list(G.edges()):
-            qc.rzz(2 * gamma[irep], pair[0], pair[1])
+            qc.rzz(gamma[irep], nqubits-1- pair[0], nqubits-1-pair[1])
 
         # mixer unitary
         for i in range(0, nqubits):
-            qc.rx(2 * beta[irep], i)
+            qc.rx(2 * beta[irep], nqubits-1-i)
             
     qc.measure_all()
         
@@ -222,7 +247,7 @@ def cost_function_C(x,G, weight = False):
     if( len(x) != len(G.nodes())):
         return np.nan
         
-    C = 0;
+    C = 0
     for index in E:
         e1 = index[0]
         e2 = index[1]
@@ -230,7 +255,8 @@ def cost_function_C(x,G, weight = False):
             w = G[e1][e2]['weight']
             C = C + w* int(x[e1]) *(1- int(x[e2]) ) + w* int(x[e2]) *(1- int(x[e1]) )
         else:
-            C = C + int(x[e1]) *(1- int(x[e2]) ) + int(x[e2]) *(1- int(x[e1]) )
+            if int(x[e2]) != int(x[e1]):
+                C += 1
     return C
 
 def Z_expectation(counts):
@@ -250,8 +276,10 @@ def Z_expectation(counts):
     for bitstring, count in counts.items():
         total_count += count
         for i in range(len(bitstring)):
-            if bitstring[i] == '1':
+            if bitstring[i] == '0':
                 Z[i] += count
+            if bitstring[i] == '1':
+                Z[i] -= count
     Z /= total_count
     return Z
 
@@ -266,6 +294,13 @@ def Cloning(li1):
 
 # func = generate_cost_from_para(G, para, backend)
 
+def optimizer(func, initial_para, p, method = 'COBYLA'):
+    
+    res = minimize(func, 
+                      initial_para, 
+                      method = method)
+    res.x
+
 def Adam_abQAOA(func, initial_para, G, p, alpha=0.001, beta1=0.9, beta2=0.999, epsilon = 1e-8, accuracy = 1e-4, n_max = 500):
     """
     Adam optimization algprithm especially written for ab-QAOA
@@ -277,7 +312,7 @@ def Adam_abQAOA(func, initial_para, G, p, alpha=0.001, beta1=0.9, beta2=0.999, e
         beta1, beta 2: [0,1) exponential decay rates for moment estimates
                      
     Returns:
-        dict with keys 'cost', 'para', 'N_ite' 
+        dict with keys 'cost', 'para', 'N_ite', 'counts'
     """   
 # Initialization
     # number of iteration
@@ -292,7 +327,7 @@ def Adam_abQAOA(func, initial_para, G, p, alpha=0.001, beta1=0.9, beta2=0.999, e
 #     print(len(h))
     nqubits = len(G.nodes())
     # We do not need to know the energy. We set it to a value that will not converge
-    E_prev = -nqubits
+    E_prev = 1
     para = Cloning(initial_para)
     # theta = [beta, gamma] = para[0:2*p - 1]
     
