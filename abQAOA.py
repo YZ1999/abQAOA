@@ -120,9 +120,7 @@ def create_abQAOA_circ(G, para):
     gamma = theta[p:]
     h = para[-nqubits:]
     h = np.array(h)
-    h = h * np.pi / 4
-    # for bf in h:
-    #     bf = bf * np.pi / 4.
+    d = np.arcsin(h/((1+h**2)**0.5))
     
     
     
@@ -130,7 +128,7 @@ def create_abQAOA_circ(G, para):
     # C [| 0 > + ( h - \sqrt{1+h^2} ) |1 > ] 
     # Where c is normalization constant
     for i in range(0, nqubits):
-        qc.ry(h[i]-np.pi/2, nqubits -1 -i)
+        qc.ry(d[i]-np.pi/2, nqubits -1 -i)
     qc.barrier()
     # Quantum gates
     for irep in range(0, p):        
@@ -141,9 +139,9 @@ def create_abQAOA_circ(G, para):
         qc.barrier()
         # mixer unitary = exp [ib (X - hZ) ]
         for i in range(0, nqubits):               
-            qc.ry(-h[i],nqubits - 1 -i)
+            qc.ry(-d[i],nqubits - 1 -i)
             qc.rx(2*beta[irep], nqubits - 1 - i)
-            qc.ry(h[i],nqubits - 1 - i)
+            qc.ry(d[i],nqubits - 1 - i)
             
     qc.measure_all()
         
